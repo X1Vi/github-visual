@@ -73,15 +73,15 @@ const GithubVisual = () => {
         }
     };
 
-    const fetchCodeFromCommitHash = (owner , repo, commitSha) => {
-
+    const _fetchCodeFromCommitHash = (owner , repo, commitSha, token) => {
+        
         const url = `https://api.github.com/repos/${owner}/${repo}/git/commits/${commitSha}`;
 
         fetch(url, {
             method: 'GET',
             headers: {
                 'Accept': 'application/vnd.github.v3+json',
-                'Authorization': `Bearer YOUR_GITHUB_TOKEN` // replace with your GitHub token
+                'Authorization': `Bearer ${token}` // replace with your GitHub token
             }
         })
             .then(response => {

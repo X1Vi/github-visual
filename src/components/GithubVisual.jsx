@@ -1,16 +1,47 @@
 import React, { useState, useEffect, use } from 'react';
+import MonthYearPicker from './MonthYearPicker';
 
 const GithubVisual = () => {
     const [token, setToken] = useState(localStorage.getItem("token") || '');
     const [username, setUsername] = useState(localStorage.getItem("username") || '');
-    const [data, setData] = useState(null);
-    const [selectedRepo, setSelectedRepo] = useState('');
+    const [data, setData] = useState(JSON.parse(localStorage.getItem("data")) || null);
+    const [selectedRepo, setSelectedRepo] = useState(localStorage.getItem("selectedRepo") || '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [fetchCount, setFetchCount] = useState(30); // Default to fetching 30 repositories
-    const [fetchAll, setFetchAll] = useState(false); // Option to fetch all repositories
-    const [currentDate, setCurrentDate] = useState(new Date());
-    const [selectedDateCommits, setSelectedDateCommits] = useState([]);
+    const [fetchCount, setFetchCount] = useState(parseInt(localStorage.getItem("fetchCount")) || 30); // Default to fetching 30 repositories
+    const [fetchAll, setFetchAll] = useState(localStorage.getItem("fetchAll") === 'true'); // Option to fetch all repositories
+    const [currentDate, setCurrentDate] = useState(() => {
+        const storedDate = localStorage.getItem("currentDate");
+        const parsedDate = storedDate ? new Date(storedDate) : null;
+        return parsedDate && !isNaN(parsedDate) ? parsedDate : new Date();
+    });
+    const [selectedDateCommits, setSelectedDateCommits] = useState(JSON.parse(localStorage.getItem("selectedDateCommits")) || []);
+
+
+
+    useEffect(() => {
+        localStorage.setItem("data", JSON.stringify(data));
+    }, [data]);
+
+    useEffect(() => {
+        localStorage.setItem("selectedRepo", selectedRepo);
+    }, [selectedRepo]);
+
+    useEffect(() => {
+        localStorage.setItem("fetchCount", fetchCount);
+    }, [fetchCount]);
+
+    useEffect(() => {
+        localStorage.setItem("fetchAll", fetchAll);
+    }, [fetchAll]);
+
+    useEffect(() => {
+        localStorage.setItem("currentDate", currentDate.toISOString());
+    }, [currentDate]);
+
+    useEffect(() => {
+        localStorage.setItem("selectedDateCommits", JSON.stringify(selectedDateCommits));
+    }, [selectedDateCommits]);
 
     useEffect(() => {
         localStorage.setItem("token", token);
@@ -73,8 +104,8 @@ const GithubVisual = () => {
         }
     };
 
-    const _fetchCodeFromCommitHash = (owner , repo, commitSha, token) => {
-        
+    const _fetchCodeFromCommitHash = (owner, repo, commitSha, token) => {
+
         const url = `https://api.github.com/repos/${owner}/${repo}/git/commits/${commitSha}`;
 
         fetch(url, {
@@ -348,12 +379,16 @@ const GithubVisual = () => {
         return (
             <div style={{ marginTop: '30px' }}>
                 <h3 style={{ color: '#58a6ff' }}>Commit Calendar</h3>
+                <div style={{justifyContent:'center', alignContent:'center', alignItems:"center", display:'flex'}}>
+                <MonthYearPicker onDateChange={(newDate) => setCurrentDate(newDate)} />
+                </div>
                 <div style={{
                     background: '#161b22',
                     borderRadius: '6px',
                     border: '1px solid #30363d',
                     padding: '15px'
                 }}>
+
                     <div style={{
                         display: 'flex',
                         justifyContent: 'space-between',

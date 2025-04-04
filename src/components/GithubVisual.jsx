@@ -15,11 +15,22 @@ const GithubVisual = () => {
         const parsedDate = storedDate ? new Date(storedDate) : null;
         return parsedDate && !isNaN(parsedDate) ? parsedDate : new Date();
     });
+
+    const [dateSubtractCommit, setDateSubtractCommitDate] = useState(localStorage.getItem("dateSubtractCommit") || 7);
     const [selectedDateCommits, setSelectedDateCommits] = useState(JSON.parse(localStorage.getItem("selectedDateCommits")) || []);
 
 
 
     useEffect(() => {
+        if (data === null) {
+            return
+        }
+        let { commits } = data;
+        if (Array.isArray(commits)) {
+            if (commits.length > 200) {
+                return;
+            }
+        }
         localStorage.setItem("data", JSON.stringify(data));
     }, [data]);
 
@@ -50,6 +61,11 @@ const GithubVisual = () => {
     useEffect(() => {
         localStorage.setItem("username", username);
     }, [username])
+
+    useEffect(() => {
+        localStorage.setItem("dateSubtractCommit", dateSubtractCommit);
+    }, [dateSubtractCommit])
+
     // Fetch repositories from GitHub API
     const fetchRepos = async () => {
         setLoading(true);
@@ -129,7 +145,6 @@ const GithubVisual = () => {
             });
     }
 
-    // Fetch details for a selected repository
     const fetchRepoDetails = async () => {
         if (!selectedRepo) return;
 
@@ -141,18 +156,8 @@ const GithubVisual = () => {
             const repo = data.repos.find(r => r.name === selectedRepo);
             if (!repo) throw new Error('Repository not found');
 
-            // Fetch commits
-            const commitsResponse = await fetch(`https://api.github.com/repos/${username}/${selectedRepo}/commits?per_page=100`, {
-                headers: {
-                    'Authorization': `token ${token}`,
-                }
-            });
-
-            if (!commitsResponse.ok) {
-                throw new Error(`Failed to fetch commits: ${commitsResponse.statusText}`);
-            }
-
-            const commits = await commitsResponse.json();
+            // Fetch all commits
+            const commits = await fetchRecentCommits();
 
             // Fetch contributors
             const contributorsResponse = await fetch(`https://api.github.com/repos/${username}/${selectedRepo}/contributors`, {
@@ -183,6 +188,88 @@ const GithubVisual = () => {
             setLoading(false);
         }
     };
+    const fetchRecentCommits = async () => {
+        let allCommits = [];
+        let page = 1;
+        let hasMore = true;
+
+        // Calculate the date for 3 months ago from today
+        const sinceDate = new Date();
+        sinceDate.setMonth(sinceDate.getMonth() - dateSubtractCommit); // Subtract 3 months
+        const sinceISO = sinceDate.toISOString();
+
+        try {
+            while (hasMore) {
+                const commitsResponse = await fetch(
+                    `https://api.github.com/repos/${username}/${selectedRepo}/commits?per_page=100&page=${page}&since=${sinceISO}`,
+                    {
+                        headers: {
+                            'Authorization': `token ${token}`,
+                        }
+                    }
+                );
+
+                if (!commitsResponse.ok) {
+                    throw new Error(`Failed to fetch commits: ${commitsResponse.statusText}`);
+                }
+
+                const commits = await commitsResponse.json();
+                allCommits = [...allCommits, ...commits];
+
+                // Check if there's another page of results
+                const linkHeader = commitsResponse.headers.get('Link');
+                if (!linkHeader || !linkHeader.includes('rel="next"')) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
+            }
+
+            return allCommits;
+        } catch (error) {
+            console.error('Error fetching recent commits:', error);
+            throw error;
+        }
+    };
+
+
+
+    const fetchAllCommits = async () => {
+        let allCommits = [];
+        let page = 1;
+        let hasMore = true;
+
+        try {
+            while (hasMore) {
+                const commitsResponse = await fetch(`https://api.github.com/repos/${username}/${selectedRepo}/commits?per_page=100&page=${page}`, {
+                    headers: {
+                        'Authorization': `token ${token}`,
+                    }
+                });
+
+                if (!commitsResponse.ok) {
+                    throw new Error(`Failed to fetch commits: ${commitsResponse.statusText}`);
+                }
+
+                const commits = await commitsResponse.json();
+                allCommits = [...allCommits, ...commits];
+
+                // Check if there's another page of results
+                const linkHeader = commitsResponse.headers.get('Link');
+                if (!linkHeader || !linkHeader.includes('rel="next"')) {
+                    hasMore = false;
+                } else {
+                    page++;
+                }
+            }
+
+            return allCommits;
+        } catch (error) {
+            console.error('Error fetching all commits:', error);
+            throw error;
+        }
+    };
+
 
     // Update commits for a selected date
     const updateSelectedDateCommits = (date, commitsList) => {
@@ -314,9 +401,12 @@ const GithubVisual = () => {
         // Group commits by date
         const commitsByDate = {};
         data.commits.forEach(commit => {
-            const date = new Date(commit.commit.author.date).toISOString().split('T')[0];
-            commitsByDate[date] = (commitsByDate[date] || 0) + 1;
+            const date = new Date(commit.commit.author.date);
+            const dateStr = date.toISOString().split('T')[0]; // Use ISO format
+            commitsByDate[dateStr] = (commitsByDate[dateStr] || 0) + 1;
         });
+
+        console.log(commitsByDate)
 
         // Get current month and year
         const year = currentDate.getFullYear();
@@ -356,10 +446,10 @@ const GithubVisual = () => {
                 if ((i === 0 && j < firstDay) || dayCount > daysInMonth) {
                     week.push(null); // Empty cell
                 } else {
-                    const dateObj = new Date(year, month, dayCount);
-                    const dateStr = dateObj.toISOString().split('T')[0];
+                    const dateObj = new Date(year, month, dayCount + 1);
+                    const dateStr = dateObj.toISOString().split('T')[0]; // Use ISO format
                     const commitCount = commitsByDate[dateStr] || 0;
-                    const isSelected = dayCount === currentDate.getDate();
+                    const isSelected = dateStr === currentDate.toISOString().split('T')[0]; // Compare ISO dates
 
                     week.push({
                         day: dayCount,
@@ -379,8 +469,8 @@ const GithubVisual = () => {
         return (
             <div style={{ marginTop: '30px' }}>
                 <h3 style={{ color: '#58a6ff' }}>Commit Calendar</h3>
-                <div style={{justifyContent:'center', alignContent:'center', alignItems:"center", display:'flex'}}>
-                <MonthYearPicker onDateChange={(newDate) => setCurrentDate(newDate)} />
+                <div style={{ justifyContent: 'center', alignContent: 'center', alignItems: "center", display: 'flex' }}>
+                    <MonthYearPicker onDateChange={(newDate) => setCurrentDate(newDate)} />
                 </div>
                 <div style={{
                     background: '#161b22',
@@ -543,6 +633,29 @@ const GithubVisual = () => {
                         <label htmlFor="fetchAll">Fetch all repositories</label>
                     </div>
 
+                    <div>
+                        <label htmlFor="floatInput" style={{ marginRight: '5px' }}>Timeline of commits (months) ? </label>
+                        <input
+                            type="number"
+                            id="floatInput"
+                            step="0.5"
+                            value={dateSubtractCommit}
+                            onChange={(e) => {
+                                const inputFloat = parseFloat(e.target.value);
+                                if (!isNaN(inputFloat)) {
+                                    setDateSubtractCommitDate(inputFloat);
+                                }
+                            }}
+                            style={{
+                                width: '100px',
+                                padding: '4px',
+                                background: '#161b22',
+                                color: '#c9d1d9',
+                                border: '1px solid #30363d',
+                                borderRadius: '6px'
+                            }}
+                        />
+                    </div>
                     {!fetchAll && (
                         <div>
                             <label htmlFor="fetchCount" style={{ marginRight: '5px' }}>Fetch count:</label>
